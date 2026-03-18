@@ -9,6 +9,9 @@ import pyautogui
 pyautogui.FAILSAFE = False  # disable corner failsafe for automation use
 
 
+MAX_CALL_DEPTH = 10  # 防止循環呼叫造成無限遞迴
+
+
 class Player:
     def __init__(self):
         self._thread: threading.Thread | None = None
@@ -16,6 +19,11 @@ class Player:
         self._playing = False
         self._on_finished = None  # callback()
         self._on_progress = None  # callback(current_iter, total_iter)
+        self._script_loader = None  # fn(name: str) -> list[dict]
+
+    def set_script_loader(self, fn):
+        """設定子腳本載入器，fn(name) -> list[dict]"""
+        self._script_loader = fn
 
     # ------------------------------------------------------------------
     # Public API
@@ -70,7 +78,7 @@ class Player:
             if self._on_finished:
                 self._on_finished()
 
-    def _execute_events(self, events: list[dict]):
+    def _execute_events(self, events: list[dict], _depth: int = 0):
         for event in events:
             if self._stop_event.is_set():
                 return
@@ -102,6 +110,15 @@ class Player:
             elif etype == "key":
                 key_str = event.get("key", "")
                 self._press_key(key_str)
+
+            elif etype == "call_script":
+                name = event.get("name", "")
+                if name and self._script_loader and _depth < MAX_CALL_DEPTH:
+                    try:
+                        sub_events = self._script_loader(name)
+                        self._execute_events(sub_events, _depth + 1)
+                    except Exception:
+                        pass
 
     @staticmethod
     def _press_key(key_str: str):

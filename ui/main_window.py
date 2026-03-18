@@ -255,12 +255,13 @@ QLabel#count {{ color: {C['muted']}; font-size: 12px; font-weight: bold; }}
 """
 
 _ROW_COLORS = {
-    "mouse_move": C["row_move"],
-    "click":      C["row_click"],
-    "release":    C["row_rel"],
-    "scroll":     C["row_scroll"],
-    "key":        C["row_key"],
-    "sleep":      C["row_sleep"],
+    "mouse_move":  C["row_move"],
+    "click":       C["row_click"],
+    "release":     C["row_rel"],
+    "scroll":      C["row_scroll"],
+    "key":         C["row_key"],
+    "sleep":       C["row_sleep"],
+    "call_script": "#fff0e6",   # 橘色調，明顯區隔
 }
 
 # ---------------------------------------------------------------------------
@@ -506,17 +507,19 @@ class MainWindow(QMainWindow):
         tb = QHBoxLayout()
         tb.setSpacing(6)
         self._lbl_event_count = _lbl("操作序列（0 個事件）", "count")
-        self._btn_ev_up   = _btn("上移")
-        self._btn_ev_down = _btn("下移")
+        self._btn_ev_up     = _btn("上移")
+        self._btn_ev_down   = _btn("下移")
+        self._btn_ev_call   = _btn("插入呼叫腳本")
         self._btn_ev_delete = _btn("刪除列", "danger")
         self._btn_ev_clear  = _btn("清除全部", "danger")
-        for b in [self._btn_ev_up, self._btn_ev_down,
+        for b in [self._btn_ev_up, self._btn_ev_down, self._btn_ev_call,
                   self._btn_ev_delete, self._btn_ev_clear]:
             b.setFixedHeight(26)
         tb.addWidget(self._lbl_event_count)
         tb.addStretch()
         tb.addWidget(self._btn_ev_up)
         tb.addWidget(self._btn_ev_down)
+        tb.addWidget(self._btn_ev_call)
         tb.addWidget(self._btn_ev_delete)
         tb.addWidget(self._btn_ev_clear)
         layout.addLayout(tb)
@@ -579,6 +582,7 @@ class MainWindow(QMainWindow):
         self._play_signals.progress.connect(self._on_play_progress)
         self._player.set_on_finished(lambda: self._play_signals.finished.emit())
         self._player.set_on_progress(lambda c, t: self._play_signals.progress.emit(c, t))
+        self._player.set_script_loader(self._sm.load_script)
         self._btn_play.clicked.connect(self._start_play)
         self._btn_stop.clicked.connect(self._stop_play)
 
@@ -596,6 +600,7 @@ class MainWindow(QMainWindow):
         self._event_table.cellChanged.connect(self._on_cell_changed)
         self._btn_ev_up.clicked.connect(self._move_event_up)
         self._btn_ev_down.clicked.connect(self._move_event_down)
+        self._btn_ev_call.clicked.connect(self._insert_call_script)
         self._btn_ev_delete.clicked.connect(self._delete_event_row)
         self._btn_ev_clear.clicked.connect(self._clear_events)
 
@@ -873,6 +878,9 @@ class MainWindow(QMainWindow):
         elif etype == "sleep":
             p1 = str(ev.get("ms", 0))
             p2 = ""
+        elif etype == "call_script":
+            p1 = ev.get("name", "")
+            p2 = ""
         else:
             p1 = p2 = ""
         return p1, p2
@@ -951,6 +959,24 @@ class MainWindow(QMainWindow):
         evs[row], evs[row + 1] = evs[row + 1], evs[row]
         self._populate_event_table(evs)
         self._event_table.selectRow(row + 1)
+
+    def _insert_call_script(self):
+        scripts = self._sm.list_scripts()
+        if not scripts:
+            QMessageBox.information(self, "無可用腳本", "請先儲存至少一個腳本再使用呼叫功能。")
+            return
+        name, ok = QInputDialog.getItem(
+            self, "插入呼叫腳本", "選擇要呼叫的腳本：", scripts, 0, False
+        )
+        if not ok or not name:
+            return
+        event = {"type": "call_script", "name": name}
+        row = self._selected_row()
+        if row >= 0:
+            self._current_events.insert(row + 1, event)
+        else:
+            self._current_events.append(event)
+        self._populate_event_table(self._current_events)
 
     def _clear_events(self):
         if not self._current_events:
